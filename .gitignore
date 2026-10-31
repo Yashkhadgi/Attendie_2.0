@@ -6,3 +6,6 @@ dist
 !.env.example
 _reference
 .DS_Store
+data/
+*.xlsx
+*.csv.local
