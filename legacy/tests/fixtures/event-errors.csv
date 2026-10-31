@@ -1,0 +1,6 @@
+PRN,Name,Role
+24070521001,Dummy Student One,participant
+24070521001,Dummy Student One,participant
+bad-id,Dummy Invalid,participant
+23070521001,Dummy Unknown,participant
+24070521002,Dummy Student Two,volunteer

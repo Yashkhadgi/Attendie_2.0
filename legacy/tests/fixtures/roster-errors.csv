@@ -1,0 +1,5 @@
+login_id,name,email,role,batch,section
+99000000001,Dummy Valid,valid@example.edu,student,2024-28,A
+99000000001,Dummy Duplicate,duplicate@example.edu,student,2024-28,A
+99000000002,Dummy Missing Section,section@example.edu,student,2024-28,
+99000000003,Dummy Bad Email,invalid-email,student,2024-28,A

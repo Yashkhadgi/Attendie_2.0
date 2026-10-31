@@ -1,11 +1,16 @@
 node_modules
+.next
 dist
 .vercel
 .env
 .env.*
+.env.local
+.env*.local
 !.env.example
 _reference
 .DS_Store
 data/
 *.xlsx
 *.csv.local
+*.tsbuildinfo
+next-env.d.ts

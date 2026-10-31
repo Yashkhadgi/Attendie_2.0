@@ -1,0 +1,9 @@
+login_id,name,email,role
+T901,Dummy Faculty 001,dummy001.faculty@example.edu,director
+T902,Dummy Faculty 002,dummy002.faculty@example.edu,deputy director
+T903,Dummy Faculty 003,dummy003.faculty@example.edu,hod
+T904,Dummy Faculty 004,dummy004.faculty@example.edu,faculty
+T905,Dummy Faculty 005,dummy005.faculty@example.edu,faculty
+T906,Dummy Faculty 006,dummy006.faculty@example.edu,faculty
+T907,Dummy Faculty 007,dummy007.faculty@example.edu,faculty
+T908,Dummy Faculty 008,dummy008.faculty@example.edu,faculty

@@ -308,6 +308,101 @@ export function parseFacultyMaster(grid: Grid): MasterImportParse<FacultyImportR
 }
 
 /* =====================================================================
+   4. EKLINK ROSTER import (the files the college actually has)
+      Columns: login_id | name | email | role | batch | section   (faculty: first 4 only)
+      Header labels in these exports are unreliable (e.g. "login_id" three times, plus a
+      "Table 1" title row), so columns are detected from the CONTENT, not the labels.
+   ===================================================================== */
+
+export interface RosterRow {
+  login_id: string;
+  name: string;
+  email: string;
+  role: string;            // raw role text from the file, lower-cased
+  batch?: string;          // e.g. 2024-28
+  section?: string;
+  semester?: number;       // derived from batch, never stored as truth
+}
+
+const BATCH_RE = /^(\d{4})\s*[-\u2013]\s*(\d{2,4})$/;
+
+/**
+ * Semester a batch is in on a given date.
+ * Assumes odd semesters run July to December and even semesters January to June.
+ * Returns null once the batch has graduated or if it has not started yet.
+ */
+export function semesterFromBatch(batch: string, on: Date = new Date()): number | null {
+  const m = batch.trim().match(BATCH_RE);
+  if (!m) return null;
+  const start = Number(m[1]);
+  const y = on.getFullYear();
+  const sem = on.getMonth() >= 6 ? 2 * (y - start) + 1 : 2 * (y - 1 - start) + 2;
+  return sem >= 1 && sem <= 8 ? sem : null;
+}
+
+export function parseRoster(grid: Grid, on: Date = new Date()): MasterImportParse<RosterRow> {
+  const out: MasterImportParse<RosterRow> = { valid: [], invalid: [], duplicates: [], warnings: [] };
+  const width = Math.max(0, ...grid.map((r) => r.length));
+  const count = (col: number, test: (v: string) => boolean) =>
+    grid.filter((r) => test((r[col] ?? "").trim())).length;
+
+  const KNOWN_ROLES = ["student", "faculty", "staff", "hod", "director", "deputy director", "finance", "admin"];
+  let emailCol = -1, roleCol = -1, batchCol = -1, sectionCol = -1;
+  let best = 0;
+  for (let c = 0; c < width; c++) { const n = count(c, (v) => EMAIL_RE.test(v)); if (n > best) { best = n; emailCol = c; } }
+  best = 0;
+  for (let c = 0; c < width; c++) { const n = count(c, (v) => KNOWN_ROLES.includes(v.toLowerCase())); if (n > best) { best = n; roleCol = c; } }
+  best = 0;
+  for (let c = 0; c < width; c++) { const n = count(c, (v) => BATCH_RE.test(v)); if (n > best) { best = n; batchCol = c; } }
+  best = 0;
+  for (let c = 0; c < width; c++) { const n = count(c, (v) => /^[A-Za-z]$/.test(v)); if (n > best) { best = n; sectionCol = c; } }
+
+  if (emailCol === -1 || roleCol === -1) {
+    out.warnings.push("Could not find the email and role columns.");
+    return out;
+  }
+  const loginCol = 0;
+  const nameCol = [1, 2, 3].find((c) => c !== emailCol && c !== roleCol && c !== batchCol && c !== sectionCol) ?? 1;
+  const hasStudents = grid.some((r) => (r[roleCol] ?? "").trim().toLowerCase() === "student");
+  if (hasStudents && batchCol === -1) out.warnings.push("No batch column found. Semester cannot be derived.");
+
+  const seenId = new Set<string>(), seenMail = new Set<string>();
+  grid.forEach((r, i) => {
+    const rowNumber = i + 1;
+    const login_id = (r[loginCol] ?? "").trim();
+    const email = (r[emailCol] ?? "").trim().toLowerCase();
+    const role = (r[roleCol] ?? "").trim().toLowerCase();
+    // skip title and header rows: a data row has a valid email AND a known role
+    if (!EMAIL_RE.test(email) || !KNOWN_ROLES.includes(role)) {
+      if (login_id && login_id.toLowerCase() !== "table 1" && !/^login_?id$/i.test(login_id)) {
+        out.invalid.push({ rowNumber, reason: "Missing or invalid email/role", raw: [] });
+      }
+      return;
+    }
+    const name = (r[nameCol] ?? "").trim();
+    if (!login_id) { out.invalid.push({ rowNumber, reason: "Missing login_id", raw: [] }); return; }
+    if (!name) { out.invalid.push({ rowNumber, reason: "Missing name", raw: [] }); return; }
+
+    let batch: string | undefined, section: string | undefined, semester: number | undefined;
+    if (role === "student") {
+      batch = batchCol !== -1 ? (r[batchCol] ?? "").trim() : "";
+      section = sectionCol !== -1 ? (r[sectionCol] ?? "").trim().toUpperCase() : "";
+      if (!looksLikePrn(login_id)) { out.invalid.push({ rowNumber, reason: "Student login_id is not a PRN", raw: [] }); return; }
+      if (!batch) { out.invalid.push({ rowNumber, reason: "Missing batch", raw: [] }); return; }
+      if (!section) { out.invalid.push({ rowNumber, reason: "Missing section", raw: [] }); return; }
+      const sem = semesterFromBatch(batch, on);
+      if (sem === null) { out.invalid.push({ rowNumber, reason: "Batch is not in an active semester", raw: [] }); return; }
+      semester = sem;
+    }
+    if (seenId.has(login_id)) { out.duplicates.push({ rowNumber, key: login_id }); return; }
+    if (seenMail.has(email)) { out.duplicates.push({ rowNumber, key: "email" }); return; }
+    seenId.add(login_id); seenMail.add(email);
+    out.valid.push({ login_id, name, email, role, batch, section, semester });
+  });
+  return out;
+}
+
+/* =====================================================================
    Downloadable templates (dummy data only)
    ===================================================================== */
 
@@ -320,12 +415,12 @@ function downloadTemplate(rows: Record<string, string | number>[], sheet: string
 
 export const downloadStudentTemplate = () =>
   downloadTemplate(
-    [{ PRN: "24070521001", Name: "Dummy Student One", Email: "dummy1@example.edu", Semester: 5, Section: "A" }],
+    [{ login_id: "24070521001", name: "Dummy Student 001", email: "dummy001@example.edu", role: "student", batch: "2024-28", section: "A" }],
     "Students", "Attendie_Student_Master_Template.xlsx");
 
 export const downloadFacultyTemplate = () =>
   downloadTemplate(
-    [{ "Staff ID": "F001", Name: "Dr. Dummy Faculty", Email: "dummy.faculty@example.edu", Department: "CSE" }],
+    [{ login_id: "T904", name: "Dummy Faculty 004", email: "dummy004.faculty@example.edu", role: "faculty" }],
     "Faculty", "Attendie_Faculty_Master_Template.xlsx");
 
 export const downloadEventSheetTemplate = () =>
